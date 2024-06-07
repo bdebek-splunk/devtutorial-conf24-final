@@ -1,0 +1,162 @@
+name: build-test-release
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+      
+      - name: Create subfolder
+        run: mkdir my-package
+
+      - name: Install UCC
+        run: |
+          pip install splunk-add-on-ucc-framework
+          pip install splunk-packaging-toolkit
+
+      - name: Build an app using UCC
+        run: ucc-gen build
+
+      - name: Create tmp folder
+        run: mkdir app-dir
+      
+      - name: Create package
+        run: ucc-gen package --path output/devtutorial_conf24 -o app-dir/
+      
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: my-package
+          path: app-dir/
+
+  run-appinspect:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v2
+
+      - name: Download package
+        uses: actions/download-artifact@v4
+        with:
+          name: my-package
+          path: app-dir/
+
+      - name: Install system packages
+        run: |
+          sudo apt update -qq
+          sudo apt install -y python3-pip
+          sudo pip install splunk-appinspect
+      
+      - name: Run AppInspect
+        run: |
+          ls -la .
+          ls -la app-dir/
+          FILE_NAME=$(ls -1 app-dir/)
+          splunk-appinspect inspect app-dir/$FILE_NAME --output-file appinspect_result.json --mode test
+
+      - name: Upload appinspect report
+        uses: actions/upload-artifact@v4
+        with:
+          name: appinspect report
+          path: appinspect_result.json
+
+  run-appinspect-api:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/download-artifact@v4
+        with:
+          name: my-package
+          path: app-dir/
+      - name: appinspect-api
+        uses: splunk/appinspect-api-action@v3.0
+        with:
+          username: ${{ secrets.SPL_COM_USER }}
+          password: ${{ secrets.SPL_COM_PASSWORD }}
+          app_path: app-dir/
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: appinspect-api-html-report
+          path: AppInspect_response.html
+
+  test-v9:
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      SPLUNK_VERSION: "9.0"
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v2
+
+      - name: Download package
+        uses: actions/download-artifact@v4
+        with:
+          name: my-package
+          path: app-dir/
+
+      - name: Instal packages
+        run: |
+          sudo apt update -qq
+          sudo apt-get install -y jq
+
+      - name: Test On Splunk 9.0
+        run: |
+          chmod +x .github/workflows/app_test.sh
+          .github/workflows/app_test.sh $SPLUNK_VERSION
+
+  test-v9-2-1:
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      SPLUNK_VERSION: "9.2.1"
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v2
+
+      - name: Download package
+        uses: actions/download-artifact@v4
+        with:
+          name: my-package
+          path: app-dir/
+
+      - name: Instal packages
+        run: |
+          sudo apt update -qq
+          sudo apt-get install -y jq
+
+      - name: Test On Splunk latest
+        run: |
+          chmod +x .github/workflows/app_test.sh
+          .github/workflows/app_test.sh $SPLUNK_VERSION
+
+      - name: Upload pytest report
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-report
+          path: ${{ github.workspace }}/pytest-report.html
+
+  release:
+    if: startsWith(github.event.ref, 'refs/tags/v')
+    needs: [test-v9-2-1, test-v9, run-appinspect]
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Create a Release
+      uses: elgohr/Github-Release-Action@v5
+      env:
+        GH_TOKEN: ${{ secrets.AUTOMATION_TOKEN }}
+      with:
+        title: ${{ github.ref_name }} release
