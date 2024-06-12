@@ -18,7 +18,12 @@ apt-get install docker.io -y
 
 
 echo -e "\033[92m Creating splunk container...\033[0m"
-docker run --rm -d -p 8000:8000 -p 8089:8089 -e "SPLUNK_START_ARGS=--accept-license" -e "SPLUNK_PASSWORD=$PASSWORD" --name $CONTAINER_NAME splunk/splunk:$SPLUNK_VERSION
+docker run --rm -d \
+    -p 8000:8000 \
+    -p 8089:8089 \
+    -e "SPLUNK_START_ARGS=--accept-license" \
+    -e "SPLUNK_PASSWORD=$PASSWORD" \
+    --name $CONTAINER_NAME splunk/splunk:$SPLUNK_VERSION
 
 docker ps
 
@@ -118,7 +123,16 @@ while [[ $loopCounter != 0 && $mainReady != 1 ]]; do
 
         set -e # fail the job if pytest resutls with failures
 
-        pytest $CI_PROJECT_DIR/tests/knowledge/test_savedsearches.py --splunk-type=external --splunk-app=$CI_PROJECT_DIR/package/ --splunk-data-generator=$CI_PROJECT_DIR/tests/knowledge/ --splunk-host=$CONTAINER_IP --splunk-port=8089 --splunk-user=$USER --splunk-password=$PASSWORD --splunk-hec-token=$HEC_TOKEN --html=pytest-report.html --self-contained-html
+        pytest $CI_PROJECT_DIR/tests/knowledge/test_savedsearches.py \
+            --splunk-type=external \
+            --splunk-app=$CI_PROJECT_DIR/package/ \
+            --splunk-data-generator=$CI_PROJECT_DIR/tests/knowledge/ \
+            --splunk-host=$CONTAINER_IP \
+            --splunk-port=8089 \
+            --splunk-user=$USER \
+            --splunk-password=$PASSWORD \
+            --splunk-hec-token=$HEC_TOKEN \
+            --html=pytest-report.html --self-contained-html
 
         echo "______________________________________________________________________"
 
@@ -158,4 +172,3 @@ if [[ $mainReady != 1 ]]; then
   docker ps -a
   exit 1
 fi
-
